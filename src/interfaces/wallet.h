@@ -7,7 +7,6 @@
 
 #include <amount.h>                    // For CAmount
 #include <pubkey.h>                    // For CKeyID and CScriptID (definitions needed in CTxDestination instantiation)
-#include <script/ismine.h>             // For isminefilter, isminetype
 #include <script/standard.h>           // For CTxDestination
 #include <support/allocators/secure.h> // For SecureString
 #include <ui_interface.h>              // For ChangeType
@@ -25,7 +24,10 @@ class CCoinControl;
 class CFeeRate;
 class CKey;
 class CWallet;
+enum isminetype : unsigned int;
 enum class FeeReason;
+typedef uint8_t isminefilter;
+
 enum class OutputType;
 struct CRecipient;
 
@@ -76,8 +78,8 @@ public:
     //! Get wallet name.
     virtual std::string getWalletName() = 0;
 
-    // Get key from pool.
-    virtual bool getKeyFromPool(bool internal, CPubKey& pub_key) = 0;
+    // Get a new address.
+    virtual bool getNewDestination(const OutputType type, const std::string label, CTxDestination& dest) = 0;
 
     //! Get public key.
     virtual bool getPubKey(const CKeyID& address, CPubKey& pub_key) = 0;
@@ -247,6 +249,9 @@ public:
     // Get default change type.
     virtual OutputType getDefaultChangeType() = 0;
 
+    //! Get max tx fee.
+    virtual CAmount getDefaultMaxTxFee() = 0;
+
     // Remove wallet.
     virtual void remove() = 0;
 
@@ -291,9 +296,6 @@ public:
 
     //! Get transaction data.
     virtual const CTransaction& get() = 0;
-
-    //! Get virtual transaction size.
-    virtual int64_t getVirtualSize() = 0;
 
     //! Send pending transaction and commit to wallet.
     virtual bool commit(WalletValueMap value_map,

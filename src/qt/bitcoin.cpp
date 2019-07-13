@@ -30,13 +30,10 @@
 #include <interfaces/handler.h>
 #include <interfaces/node.h>
 #include <noui.h>
-#include <rpc/server.h>
+#include <util/threadnames.h>
 #include <ui_interface.h>
 #include <uint256.h>
 #include <util/system.h>
-#include <warnings.h>
-
-#include <walletinitinterface.h>
 
 #include <memory>
 #include <stdint.h>
@@ -149,6 +146,7 @@ void BitcoinCore::initialize()
     try
     {
         qDebug() << __func__ << ": Running initialization in thread";
+        util::ThreadRename("qt-init");
         bool rv = m_node.appInitMain();
         Q_EMIT initializeResult(rv);
     } catch (const std::exception& e) {
@@ -332,7 +330,7 @@ void BitcoinApplication::initializeResult(bool success)
     if(success)
     {
         // Log this only after AppInitMain finishes, as then logging setup is guaranteed complete
-        qWarning() << "Platform customization:" << platformStyle->getName();
+        qInfo() << "Platform customization:" << platformStyle->getName();
 #ifdef ENABLE_WALLET
         m_wallet_controller = new WalletController(m_node, platformStyle, optionsModel, this);
 #ifdef ENABLE_BIP70
@@ -415,7 +413,6 @@ static void SetupUIArgs()
     gArgs.AddArg("-uiplatform", strprintf("Select platform to customize UI for (one of windows, macosx, other; default: %s)", BitcoinGUI::DEFAULT_UIPLATFORM), true, OptionsCategory::GUI);
 }
 
-#ifndef BITCOIN_QT_TEST
 int GuiMain(int argc, char* argv[])
 {
 #ifdef WIN32
@@ -423,6 +420,7 @@ int GuiMain(int argc, char* argv[])
     std::tie(argc, argv) = winArgs.get();
 #endif
     SetupEnvironment();
+    util::ThreadRename("main");
 
     std::unique_ptr<interfaces::Node> node = interfaces::MakeNode();
 
@@ -437,18 +435,22 @@ int GuiMain(int argc, char* argv[])
     Q_INIT_RESOURCE(bitcoin);
     Q_INIT_RESOURCE(bitcoin_locale);
 
-    BitcoinApplication app(*node, argc, argv);
     // Generate high-dpi pixmaps
     QApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
 #if QT_VERSION >= 0x050600
-    QGuiApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+    QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
 #endif
 #ifdef Q_OS_MAC
     QApplication::setAttribute(Qt::AA_DontShowIconsInMenus);
 #endif
 
+    BitcoinApplication app(*node, argc, argv);
+
     // Register meta types used for QMetaObject::invokeMethod
     qRegisterMetaType< bool* >();
+#ifdef ENABLE_WALLET
+    qRegisterMetaType<WalletModel*>();
+#endif
     //   Need to pass name here as CAmount is a typedef (see http://qt-project.org/doc/qt-5/qmetatype.html#qRegisterMetaType)
     //   IMPORTANT if it is no longer a typedef use the normal variant above
     qRegisterMetaType< CAmount >("CAmount");
@@ -460,7 +462,7 @@ int GuiMain(int argc, char* argv[])
     SetupUIArgs();
     std::string error;
     if (!node->parseParameters(argc, argv, error)) {
-        QMessageBox::critical(nullptr, QObject::tr(PACKAGE_NAME),
+        QMessageBox::critical(nullptr, PACKAGE_NAME,
             QObject::tr("Error parsing command line arguments: %1.").arg(QString::fromStdString(error)));
         return EXIT_FAILURE;
     }
@@ -497,12 +499,12 @@ int GuiMain(int argc, char* argv[])
     /// - Do not call GetDataDir(true) before this step finishes
     if (!fs::is_directory(GetDataDir(false)))
     {
-        QMessageBox::critical(nullptr, QObject::tr(PACKAGE_NAME),
+        QMessageBox::critical(nullptr, PACKAGE_NAME,
             QObject::tr("Error: Specified data directory \"%1\" does not exist.").arg(QString::fromStdString(gArgs.GetArg("-datadir", ""))));
         return EXIT_FAILURE;
     }
     if (!node->readConfigFiles(error)) {
-        QMessageBox::critical(nullptr, QObject::tr(PACKAGE_NAME),
+        QMessageBox::critical(nullptr, PACKAGE_NAME,
             QObject::tr("Error: Cannot parse configuration file: %1.").arg(QString::fromStdString(error)));
         return EXIT_FAILURE;
     }
@@ -517,7 +519,7 @@ int GuiMain(int argc, char* argv[])
     try {
         node->selectParams(gArgs.GetChainName());
     } catch(std::exception &e) {
-        QMessageBox::critical(nullptr, QObject::tr(PACKAGE_NAME), QObject::tr("Error: %1").arg(e.what()));
+        QMessageBox::critical(nullptr, PACKAGE_NAME, QObject::tr("Error: %1").arg(e.what()));
         return EXIT_FAILURE;
     }
 #ifdef ENABLE_WALLET
@@ -574,7 +576,7 @@ int GuiMain(int argc, char* argv[])
         if (app.baseInitialize()) {
             app.requestInitialize();
 #if defined(Q_OS_WIN)
-            WinShutdownMonitor::registerShutdownBlockReason(QObject::tr("%1 didn't yet exit safely...").arg(QObject::tr(PACKAGE_NAME)), (HWND)app.getMainWinId());
+            WinShutdownMonitor::registerShutdownBlockReason(QObject::tr("%1 didn't yet exit safely...").arg(PACKAGE_NAME), (HWND)app.getMainWinId());
 #endif
             app.exec();
             app.requestShutdown();
@@ -593,4 +595,3 @@ int GuiMain(int argc, char* argv[])
     }
     return rv;
 }
-#endif // BITCOIN_QT_TEST

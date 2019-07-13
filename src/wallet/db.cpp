@@ -1,15 +1,11 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Bitcoin Core developers
+// Copyright (c) 2009-2019 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <wallet/db.h>
 
-#include <addrman.h>
-#include <hash.h>
-#include <protocol.h>
 #include <util/strencodings.h>
-#include <wallet/walletutil.h>
 
 #include <stdint.h>
 
@@ -82,6 +78,14 @@ bool IsWalletLoaded(const fs::path& wallet_path)
     if (env == g_dbenvs.end()) return false;
     auto database = env->second.lock();
     return database && database->IsDatabaseLoaded(database_filename);
+}
+
+fs::path WalletDataFilePath(const fs::path& wallet_path)
+{
+    fs::path env_directory;
+    std::string database_filename;
+    SplitWalletPath(wallet_path, env_directory, database_filename);
+    return env_directory / database_filename;
 }
 
 /**
@@ -399,13 +403,6 @@ bool BerkeleyBatch::VerifyEnvironment(const fs::path& file_path, std::string& er
     LogPrintf("Using BerkeleyDB version %s\n", DbEnv::version(nullptr, nullptr, nullptr));
     LogPrintf("Using wallet %s\n", file_path.string());
 
-    // Wallet file must be a plain filename without a directory
-    if (walletFile != fs::basename(walletFile) + fs::extension(walletFile))
-    {
-        errorStr = strprintf(_("Wallet %s resides outside wallet directory %s"), walletFile, walletDir.string());
-        return false;
-    }
-
     if (!env->Open(true /* retry */)) {
         errorStr = strprintf(_("Error initializing wallet database environment %s!"), walletDir);
         return false;
@@ -606,7 +603,9 @@ void BerkeleyBatch::Flush()
     if (fReadOnly)
         nMinutes = 1;
 
-    env->dbenv->txn_checkpoint(nMinutes ? gArgs.GetArg("-dblogsize", DEFAULT_WALLET_DBLOGSIZE) * 1024 : 0, nMinutes, 0);
+    if (env) { // env is nullptr for dummy databases (i.e. in tests). Don't actually flush if env is nullptr so we don't segfault
+        env->dbenv->txn_checkpoint(nMinutes ? gArgs.GetArg("-dblogsize", DEFAULT_WALLET_DBLOGSIZE) * 1024 : 0, nMinutes, 0);
+    }
 }
 
 void BerkeleyDatabase::IncrementUpdateCounter()

@@ -8,7 +8,6 @@
 
 #include <qt/walletmodeltransaction.h>
 
-#include <interfaces/node.h>
 #include <policy/policy.h>
 
 WalletModelTransaction::WalletModelTransaction(const QList<SendCoinsRecipient> &_recipients) :
@@ -29,7 +28,7 @@ std::unique_ptr<interfaces::PendingWalletTx>& WalletModelTransaction::getWtx()
 
 unsigned int WalletModelTransaction::getTransactionSize()
 {
-    return wtx ? wtx->getVirtualSize() : 0;
+    return wtx ? GetVirtualTransactionSize(wtx->get()) : 0;
 }
 
 CAmount WalletModelTransaction::getTransactionFee() const
